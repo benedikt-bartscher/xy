@@ -54,12 +54,30 @@ from .tokens import parse_plan_token, parse_token
 if TYPE_CHECKING:
     from xy._figure import Figure
 
-__all__ = ["XY_PLANE", "XYChannel"]
+__all__ = [
+    "EVENT_ERR",
+    "EVENT_MSG",
+    "EVENT_PAYLOAD",
+    "EVENT_SUB",
+    "EVENT_UNSUB",
+    "XY_PLANE",
+    "XYChannel",
+]
 
 #: Channel name for the chart data plane. A channel name is part of Reflex's
 #: websocket protocol, not a URL: it needs no route, no mount, and no
 #: reverse-proxy entry beyond what the app's websocket already has.
 XY_PLANE = "/_xy"
+
+#: The wire vocabulary, named on both sides of it: `XYChart.jsx` declares the
+#: same five strings, and `tests/reflex_adapter/test_assets.py` asserts the two
+#: declarations match — so a rename here fails there rather than silently
+#: producing a client that talks past the server.
+EVENT_SUB = "sub"  # client -> server: subscribe, join the figure room
+EVENT_UNSUB = "unsub"  # client -> server: leave the room
+EVENT_MSG = "msg"  # both ways: one kernel dispatch, its reply, or a push
+EVENT_PAYLOAD = "payload"  # server -> client: first paint / full refresh
+EVENT_ERR = "err"  # server -> client: failure, optionally asking for a resync
 
 # One payload/message is screen-bounded by construction (§29); these caps are
 # the transport's fail-closed backstop, not a tuning knob.
@@ -241,9 +259,9 @@ class XYChannel(rx.channels.Channel):
     ) -> None:
         """Dispatch one inbound message to the data plane handlers."""
         handler = {
-            "sub": self.on_sub,
-            "unsub": self.on_unsub,
-            "msg": self.on_msg,
+            EVENT_SUB: self.on_sub,
+            EVENT_UNSUB: self.on_unsub,
+            EVENT_MSG: self.on_msg,
         }.get(event)
         if handler is not None:
             await handler(session.sid, data)
@@ -320,7 +338,7 @@ class XYChannel(rx.channels.Channel):
         }
         if mid is not None:
             envelope["mid"] = mid
-        await self._send("payload", envelope, _buffer_bytes(raw), to=sid)
+        await self._send(EVENT_PAYLOAD, envelope, _buffer_bytes(raw), to=sid)
 
     async def on_unsub(self, sid: str, data: Any) -> None:
         token = self._token_of(data)
@@ -378,7 +396,10 @@ class XYChannel(rx.channels.Channel):
             # Channel replies are bounded by construction, so this is a
             # contract check.
             await self._send(
-                "err", {"fig": token, "error": "reply exceeds wire attachment limit"}, [], to=sid
+                EVENT_ERR,
+                {"fig": token, "error": "reply exceeds wire attachment limit"},
+                [],
+                to=sid,
             )
             return
         envelope: dict[str, Any] = {
@@ -391,7 +412,7 @@ class XYChannel(rx.channels.Channel):
         mid = self._mid_of(data)
         if mid is not None:
             envelope["mid"] = mid
-        await self._send("msg", envelope, wire_buffers, to=sid)
+        await self._send(EVENT_MSG, envelope, wire_buffers, to=sid)
 
     # -- server-side pushes (append/refresh fan-out) ---------------------------
 
@@ -411,7 +432,7 @@ class XYChannel(rx.channels.Channel):
             # advanced; view-state pushes carry a generation stamp but do not
             # mutate the figure payload.
             await self._send(
-                "err",
+                EVENT_ERR,
                 {
                     "fig": token,
                     "error": "push exceeds wire attachment limit",
@@ -427,7 +448,7 @@ class XYChannel(rx.channels.Channel):
         }
         if version is not None:
             envelope["version"] = version
-        await self._send("msg", envelope, wire_buffers, room=self._room(token))
+        await self._send(EVENT_MSG, envelope, wire_buffers, room=self._room(token))
 
     async def broadcast_payload(self, token: str, entry: FigureEntry) -> None:
         """Push a full refreshed payload (figure rebuilt) to subscribers."""
@@ -436,7 +457,7 @@ class XYChannel(rx.channels.Channel):
         if not self.registry.is_current(token, entry):
             return
         await self._send(
-            "payload",
+            EVENT_PAYLOAD,
             {
                 "fig": token,
                 "version": entry.version,
@@ -682,7 +703,7 @@ class XYChannel(rx.channels.Channel):
         envelope: dict[str, Any] = {"fig": token, "error": error}
         if resync:
             envelope["resync"] = True
-        await self._send("err", envelope, [], to=sid)
+        await self._send(EVENT_ERR, envelope, [], to=sid)
 
     async def broadcast_error(self, token: str, error: str, resync: bool = False) -> None:
         """Room-wide err frame for server-side failures with no request to
@@ -690,4 +711,4 @@ class XYChannel(rx.channels.Channel):
         envelope: dict[str, Any] = {"fig": token, "error": error}
         if resync:
             envelope["resync"] = True
-        await self._send("err", envelope, [], room=self._room(token))
+        await self._send(EVENT_ERR, envelope, [], room=self._room(token))

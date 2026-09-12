@@ -18,7 +18,7 @@ import json
 import socket
 import threading
 from types import SimpleNamespace
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 import aiohttp
 import numpy as np
@@ -103,6 +103,7 @@ class PlaneClient:
         self.messages: asyncio.Queue = asyncio.Queue()
         self.errors: asyncio.Queue = asyncio.Queue()
         self._opened = asyncio.Event()
+        self.reader_error: Optional[BaseException] = None
         self._queues = {
             "payload": self.payloads,
             "msg": self.messages,
@@ -111,6 +112,19 @@ class PlaneClient:
         self._reader = asyncio.create_task(self._read_forever())
 
     async def _read_forever(self) -> None:
+        try:
+            await self._read_frames()
+        except (asyncio.CancelledError, ConnectionResetError):
+            raise  # ordinary teardown
+        except Exception as error:  # noqa: BLE001 - the wire is what's under test
+            # A malformed frame is the failure this suite exists to catch, so
+            # it must not surface as "everything timed out". Hand it to every
+            # waiter instead of dying quietly with an unretrieved exception.
+            self.reader_error = error
+            for queue in self._queues.values():
+                queue.put_nowait(error)
+
+    async def _read_frames(self) -> None:
         with contextlib.suppress(asyncio.CancelledError, ConnectionResetError):
             async for frame in self._ws:
                 if frame.type == aiohttp.WSMsgType.BINARY:
@@ -146,7 +160,10 @@ class PlaneClient:
             return
         self.connected = False
         self._reader.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        # Any reader failure was already handed to the waiters, so teardown
+        # only has to retrieve it — re-raising here would replace a test's real
+        # assertion failure with a confusing one from the cleanup path.
+        with contextlib.suppress(BaseException):
             await self._reader
         await self._ws.close()
         await self._session.close()
@@ -175,7 +192,10 @@ class Collector:
 
     @staticmethod
     async def next(queue: asyncio.Queue, timeout: float = 5.0):
-        return await asyncio.wait_for(queue.get(), timeout)
+        frame = await asyncio.wait_for(queue.get(), timeout)
+        if isinstance(frame, BaseException):
+            raise AssertionError("the data plane reader failed") from frame
+        return frame
 
 
 class FakeSession:

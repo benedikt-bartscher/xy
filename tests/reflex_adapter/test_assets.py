@@ -8,6 +8,7 @@ from scripts.js_exports import missing_esm_exports
 
 import reflex_xy
 import xy
+from reflex_xy import data_plane
 from reflex_xy.assets import _client_source, _link_client
 
 ADAPTER_ASSETS = pathlib.Path(reflex_xy.__file__).parent / "assets"
@@ -56,19 +57,28 @@ def test_link_client_creates_and_repairs(tmp_path):
 def test_wrapper_speaks_the_data_plane_protocol():
     """The JSX wrapper and data_plane.py must agree on event names and shapes."""
     jsx = (ADAPTER_ASSETS / "XYChart.jsx").read_text(encoding="utf-8")
-    # transport identity: one channel name, matching XY_PLANE in data_plane.py,
-    # on the app's own websocket — no second connection to open or configure
-    assert 'const XY_PLANE = "/_xy"' in jsx
+    # transport identity: one channel name on the app's own websocket — no
+    # second connection to open or configure. The name itself comes from
+    # data_plane.py rather than a literal, so a rename there fails here.
+    assert f'const XY_PLANE = "{data_plane.XY_PLANE}"' in jsx
     assert "getChannel(XY_PLANE)" in jsx
     # socket.io is gone: no client, no namespace URL, no engine.io mount path
     for gone in ("socket.io-client", "nsUrl", "endpoint.pathname", "env.TRANSPORT", "io("):
         assert gone not in jsx, f"wrapper still carries socket.io machinery: {gone}"
+    # Both sides name the same five events, and take their names from the same
+    # place: this is the one point where the Python and JavaScript halves of
+    # the protocol can drift apart without any other test noticing.
+    for constant in ("EVENT_SUB", "EVENT_UNSUB", "EVENT_MSG", "EVENT_PAYLOAD", "EVENT_ERR"):
+        event = getattr(data_plane, constant)
+        assert f'const {constant} = "{event}"' in jsx, (
+            f"XYChart.jsx does not declare {constant} = {event!r} the way data_plane.py does"
+        )
     # client -> server events
-    for needle in ('"sub"', '"unsub"', '"msg"'):
-        assert f"plane.emit({needle}" in jsx
+    for constant in ("EVENT_SUB", "EVENT_UNSUB", "EVENT_MSG"):
+        assert f"plane.emit({constant}" in jsx
     # server -> client events
-    for needle in ('"payload"', '"msg"', '"err"'):
-        assert f"plane.on({needle}" in jsx
+    for constant in ("EVENT_PAYLOAD", "EVENT_MSG", "EVENT_ERR"):
+        assert f"plane.on({constant}" in jsx
     # binary columns go straight into typed arrays — never through JSON numbers
     assert "new Uint8Array(b)" in jsx
     assert "data.version < payloadVersion" in jsx
@@ -99,7 +109,7 @@ def test_wrapper_speaks_the_data_plane_protocol():
     assert jsx.count("resetEpoch();") == 3  # subscribe, disconnect, cleanup
     assert "awaitingPayload || !plane.connected" in jsx
     assert "awaitingPayload = false" in jsx
-    assert 'plane.on("disconnect", onDisconnect)' in jsx
+    assert "plane.on(EVENT_DISCONNECT, onDisconnect)" in jsx
     assert "wireVersion > expected && plane.connected" in jsx
     assert "data.resync === true && plane.connected" in jsx
     # Rejected replies and accepted generation advances both reclaim pending

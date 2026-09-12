@@ -11,13 +11,19 @@ same performance contract as the notebook path: screen-bounded binary wire
 > **Unreleased dependency (temporary).** The data plane is a Reflex *channel*
 > (§2), which no released Reflex ships yet — it exists on
 > reflex-dev/reflex#6932. Until that lands, the `xy[reflex]` extra carries a
-> git requirement for the branch and `[tool.uv.sources]` pins the whole Reflex
-> workspace to it, with `[tool.hatch.metadata] allow-direct-references` to make
-> the build accept that. This is deliberately unpublishable: PyPI refuses a
-> direct reference, so a release cut from this tree fails at upload rather than
+> git requirement naming one immutable commit on that branch, with
+> `[tool.hatch.metadata] allow-direct-references` to make the build accept it.
+> Two properties are deliberate. It is **unpublishable**: PyPI refuses a direct
+> reference, so a release cut from this tree fails at upload rather than
 > shipping a version specifier that would install a Reflex where every chart
-> stays blank. Replace all three with the real floor when channels are
-> released.
+> stays blank. And it is a **commit, not the branch**: the lockfiles only bind
+> `uv sync --locked`, so a branch ref would let a bare `pip install xy[reflex]`
+> or any `uv lock` regeneration pull framework code nobody reviewed. The same
+> commit is pinned by `docs/app/pyproject.toml`'s four Reflex requirements — uv
+> refuses two URLs for one package — and
+> `tests/test_dependencies.py::test_docs_app_pins_the_same_reflex_commit` keeps
+> the six strings in step. Replace the lot with the real floor when channels
+> are released.
 
 Two decisions define this revision (superseding the HTTP-routes draft — see
 §8 for the audit trail):
@@ -161,6 +167,14 @@ The attachments are not a field of the envelope: `XYChannel._send` passes them
 as the frame's attachment list, and on the client every handler takes
 `(data, buffers)`.
 
+The five event names are declared as constants on both sides —
+`EVENT_SUB`/`EVENT_UNSUB`/`EVENT_MSG`/`EVENT_PAYLOAD`/`EVENT_ERR` in
+`data_plane.py` and again in `XYChart.jsx` — and
+`tests/reflex_adapter/test_assets.py` reads the Python ones and asserts the
+JavaScript declarations match. This is the one seam where the two halves could
+drift without any other test noticing: a renamed event on one side alone
+produces a client that talks past the server, with no error anywhere.
+
 `mid` is a validated optional per-mount id: several charts on a page share the
 socket, so direct interaction replies and direct subscription payloads echo it
 and other mounts ignore the addressed envelope. Pushes and full-payload
@@ -211,7 +225,7 @@ totality contract). This section records only what is specific to this host.
 **`view_change` does not reach the kernel here.** The wrapper intercepts the
 outgoing message and invokes the Reflex `on_view_change` prop directly
 (`dispatchView` in `python/reflex_xy/assets/XYChart.jsx`), because
-the namespace registers no Python-side view callback (§5). Every other request
+the data plane registers no Python-side view callback (§5). Every other request
 type crosses the socket unchanged and is dispatched by the shared
 `handle_message`.
 
@@ -345,8 +359,8 @@ replacement is never removed.
 
 ### 3.3 Access control
 
-The connection's `?token=` (the Reflex client token) is captured at
-namespace connect. A state token embeds the client token it was minted for,
+The connection's `?token=` (the Reflex client token) is resolved by Reflex
+and read off the channel session when it opens. A state token embeds the client token it was minted for,
 and `sub`/`msg` refuse a figure whose embedded client token differs from the
 connection's (`err: figure belongs to another session`). Tokens carry
 nothing their own client doesn't already know. When Reflex grows real
@@ -438,10 +452,10 @@ figure/data memory, not correctness. While at least one rebuildable subscriber
 remains, both the sweep and an explicit release retain only the removed token's
 scalar version so a republish on the same worker stays monotonic; the figure
 and its data buffers are released. If an interaction is the first touch after
-eviction, the namespace
+eviction, the data plane
 rebuilds, sends every subscribed mount a replacement payload room-wide, and
 drops the old-generation interaction for the triggering client to retry. If a
-new `sub` is first, the namespace broadcasts the rebuild to existing room
+new `sub` is first, the data plane broadcasts the rebuild to existing room
 members before joining the requester, then sends that mount one `mid`-addressed
 payload built for its own `px` hint. The direct path re-reads the current entry
 after joining the room: a normal replacement that landed before the join is
@@ -675,7 +689,7 @@ refused as a subscription outright.
 re-binds every mounted dependent through the `data token → {digests}`
 index — fresh figures, bumped versions, coalesced room broadcasts, exactly
 the figure-var republish machinery. The index is added to when a composite
-binds (namespace `sub`) and pruned on **every transition that can end the
+binds (a data-plane `sub`) and pruned on **every transition that can end the
 mount**: the last unsubscribe or disconnect for the composite token, its
 entry's release, failed-rebuild cleanup, the TTL sweep, and a republish
 that finds it unmounted (`_unbind_plan_if_unmounted_locked`). "Bounded by
@@ -836,7 +850,7 @@ impossible — the JS that renders a payload is always the build that shipped
 with the Python that produced it. One renderer for notebooks, static
 export, and Reflex.
 
-The wrapper: opens/reuses the shared namespace socket, `sub`s with the
+The wrapper: takes the shared `/_xy` channel, `sub`s with the
 element's measured width, builds a `ChartView` for the first `payload`, and
 passes later full payloads to `ChartView.updatePayload` (preserving keyed
 animation state; destroy + rebuild is only the compatibility fallback),
@@ -844,7 +858,7 @@ bridges `comm` to `msg` events, and forwards semantic
 events into Reflex's event system via the component's event-trigger props
 (`props.onPointHover(row)` → `addEvents(...)` → the user's handler).
 Client-side niceties: `view_change` resolves locally (no kernel round-trip;
-the namespace registers no Python callbacks), `click` issues a tagged `pick`
+the data plane registers no Python callbacks), `click` issues a tagged `pick`
 so `on_point_click` delivers the exact row, `selection` replies pair with
 the brush rect that produced them.
 
@@ -976,7 +990,7 @@ def remember_view(self, event: dict):
 reflex_xy.chart(figure=Dash.cloud, on_view_change=Dash.remember_view)
 ```
 
-Every kernel request echoes the last payload version as `v`; the namespace
+Every kernel request echoes the last payload version as `v`; the data plane
 silently rejects requests for another figure version and drops an explicitly
 malformed `v`. Omitted `v` remains accepted for compatibility. Replies echo
 the operation version; room-wide append pushes carry the newly bumped version,

@@ -223,10 +223,10 @@ which does converge room-wide.
 
 Path: per-generation operation lease plus entry-local synchronous figure lock
 → one wire message (§8) → pushed room-wide as a `msg` event on the `/_xy`
-namespace → every client in the room applies it through the §3 mutation path
+channel → every client in the room applies it through the §3 mutation path
 with `source: "api"`. Message construction and version capture are atomic with
-namespace payload/interaction kernels and an append's mutation and version
-bump, while different figures remain independent. Namespace work that also
+data-plane payload/interaction kernels and an append's mutation and version
+bump, while different figures remain independent. Data-plane work that also
 needs the generation's async lock always acquires async then synchronous;
 caller-thread view writes acquire only the synchronous lock, so the order has
 no reverse edge. Multi-client semantics are therefore identical to `append`

@@ -24,7 +24,7 @@ import asyncio
 import contextlib
 import inspect
 import warnings
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from typing import Any, Optional, cast
 
 from reflex.plugins import Plugin
@@ -32,7 +32,7 @@ from reflex.plugins import Plugin
 from .data_plane import XYChannel
 from .handles import FigureHandle, token_of
 from .registry import _figure_of, registry
-from .state_bridge import make_rebuild_hook
+from .state_bridge import app_ref, make_rebuild_hook
 from .tokens import BUILDER_ATTR, PROBE_ATTR
 from .vars import AsyncFigureVar, FigureVar
 
@@ -48,27 +48,46 @@ __all__ = [
     "setup",
 ]
 
-_channel: Optional[XYChannel] = None
-# The app the current channel is attached to. Idempotency is per app, not
-# per process: a hot reload (and AppHarness) re-imports the app module, and
-# the new App gets its own websocket that must be attached to.
-_setup_app: Any = None
+# Attached (app accessor, channel) pairs. Attachment is per *app*, not per
+# process: a hot reload (and AppHarness) re-imports the app module, and the new
+# App gets its own websocket that must be attached to. An App is unhashable, so
+# this is an identity list rather than a dict, and `app_ref` keeps the app
+# weakly so a replaced one does not outlive its reload.
+_attached: "list[tuple[Callable[[], Any], XYChannel]]" = []
+
+
+def _live_planes() -> list[XYChannel]:
+    """Attached channels whose app is still alive (forgetting the rest)."""
+    live: list[XYChannel] = []
+    for pair in list(_attached):
+        resolve_app, channel = pair
+        if resolve_app() is None:
+            _attached.remove(pair)
+        else:
+            live.append(channel)
+    return live
 
 
 def setup(app: Any) -> XYChannel:
-    """Attach the xy data plane to a Reflex app (idempotent).
+    """Attach the xy data plane to a Reflex app (idempotent *per app*).
 
     The plane is a Reflex channel on the app's own event websocket. Reflex's
     `register_channel` refuses an app that cannot carry one — state disabled,
     or a non-WebSocket transport — so a misconfiguration fails here at startup
     rather than as a blank chart in the browser.
+
+    Idempotency is keyed on the app itself, which matters once more than one
+    App exists in a process: keying on "the most recent app" instead would hand
+    an already-attached app a second channel, and Reflex rejects a duplicate
+    channel name outright.
     """
-    global _channel, _setup_app
-    if _channel is not None and _setup_app is app:
-        return _channel
+    for resolve_app, channel in _attached:
+        if resolve_app() is app:
+            return channel
     channel = XYChannel(registry, rebuild=make_rebuild_hook(app))
     app.register_channel(channel)
-    wire(channel)
+    _attached.append((app_ref(app), channel))
+    wire_attached()
 
     def _lifespan() -> Coroutine[Any, Any, None]:
         # Deliberately a *sync* function returning the sweep coroutine, not an
@@ -83,8 +102,6 @@ def setup(app: Any) -> XYChannel:
         return _xy_lifespan()
 
     app.register_lifespan_task(_lifespan)
-    _channel = channel
-    _setup_app = app
     return channel
 
 
@@ -134,10 +151,56 @@ def _ensure_page_plans(app: Any) -> None:
 
 
 def wire(channel: XYChannel) -> None:
-    """Point the registry's fan-out seams at the data plane (setup and tests)."""
+    """Point the registry's fan-out seams at one data plane (tests)."""
     registry.on_publish(channel.broadcast_payload)
     registry.on_push(channel.broadcast_message)
     registry.on_error(channel.broadcast_error)
+
+
+def wire_attached() -> None:
+    """Point the registry's fan-out seams at *every* attached data plane.
+
+    The registry is process-global; apps are not. A hot reload, an AppHarness
+    test, or simply two Apps built in one process each get their own channel,
+    and pointing the seams at the newest one alone would silently strand the
+    subscribers of every other live app — their figures would keep updating
+    server-side and never push. Fanning out costs one extra payload build per
+    additional *live* app, which is exactly the case that would otherwise be
+    broken; with the single app of a normal deployment it is the same work as
+    `wire`.
+    """
+    registry.on_publish(_fan_out_payload)
+    registry.on_push(_fan_out_message)
+    registry.on_error(_fan_out_error)
+
+
+async def _fan_out(calls: "Sequence[Coroutine[Any, Any, None]]") -> None:
+    """Await every fan-out, then re-raise the first failure.
+
+    One app's transport failing must not swallow the others' deliveries — that
+    is the whole point of fanning out — but the error still has to surface the
+    way a single-plane send does, so it is raised after the rest have run.
+    """
+    results = await asyncio.gather(*calls, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+
+
+async def _fan_out_payload(token: str, entry: Any) -> None:
+    await _fan_out([plane.broadcast_payload(token, entry) for plane in _live_planes()])
+
+
+async def _fan_out_message(
+    token: str, message: dict, buffers: Any = None, version: Optional[int] = None
+) -> None:
+    await _fan_out(
+        [plane.broadcast_message(token, message, buffers, version) for plane in _live_planes()]
+    )
+
+
+async def _fan_out_error(token: str, error: str, resync: bool = False) -> None:
+    await _fan_out([plane.broadcast_error(token, error, resync) for plane in _live_planes()])
 
 
 async def _xy_lifespan() -> None:
@@ -335,7 +398,5 @@ def clear_selection(token: "str | FigureHandle") -> None:
 
 
 def reset_setup_for_tests() -> None:
-    """Forget the wired data plane (test isolation only)."""
-    global _channel, _setup_app
-    _channel = None
-    _setup_app = None
+    """Forget every attached data plane (test isolation only)."""
+    _attached.clear()

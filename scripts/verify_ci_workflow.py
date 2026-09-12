@@ -815,8 +815,11 @@ def validate_ci_workflow(path: Path = DEFAULT_CI_WORKFLOW) -> list[str]:
         "scripts/verify_benchmark_report.py transport.json --kind transport-loopback",
         "scripts/check_regressions.py --scatter scatter.json --kernel kernel.json",
         "--transport transport.json --emit-md spec/benchmarks/metrics.md",
-        "Upload regression benchmark report",
-        "if: always()",
+        # Name and condition paired, not two independent needles: this job now
+        # has a second `if: always()` upload (the browser evidence), which a
+        # bare needle would satisfy on its behalf — letting *this* step lose
+        # its condition and stop uploading after a failed gate, silently.
+        "- name: Upload regression benchmark report\n        if: always()",
         "actions/upload-artifact@",
         "regression-benchmark-report",
         "if-no-files-found: warn",
@@ -1081,7 +1084,10 @@ def validate_ci_workflow(path: Path = DEFAULT_CI_WORKFLOW) -> list[str]:
         "Rust-backed sdist install contract",
         "XY_REQUIRE_CARGO",
         "uv pip install --no-cache",
-        '"reflex>=0.9.6"',
+        # No Reflex requirement: the adapter needs the unreleased channel
+        # transport, so there is no floor to name, and this smoke only
+        # `import reflex_xy` — which pulls no Reflex at all. Restore the
+        # `xy[reflex]` install (and assert on it here) once channels ship.
         "import reflex_xy",
         "import xy.kernels as kernels",
         'kernels.BACKEND == "native"',

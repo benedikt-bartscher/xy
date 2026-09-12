@@ -184,16 +184,18 @@ class Probe:
             time.sleep(0.25)
         raise SystemExit(f"timeout waiting for {label}; last={last!r}")
 
-    def backend_websockets(self) -> list[str]:
-        """Websockets to the app backend (excludes vite's dev-mode HMR socket)."""
+    def websockets(self) -> list[str]:
+        """Every websocket the page opened, including vite's dev-mode HMR one."""
         self.eval("1")  # pump queued CDP events
         urls: list[str] = []
         for (sid, method), events in self.s._events.items():
             if sid == self.sid and method == "Network.webSocketCreated":
                 urls.extend(e.get("url", "") for e in events)
-        # The data plane is a channel *inside* this socket, so there is one
-        # URL to match — a second one would mean the chart opened its own.
-        return [u for u in urls if "/_event" in u]
+        return urls
+
+    def backend_websockets(self) -> list[str]:
+        """Websockets to the app backend (excludes vite's dev-mode HMR socket)."""
+        return [u for u in self.websockets() if "/_event" in u]
 
     def sent_ws_frames(self, needle: str) -> list[str]:
         """Payloads of sent websocket frames containing `needle`."""
@@ -261,10 +263,17 @@ def main() -> None:
         )
         print("mounted views:", probe.eval("Array.from(window.__xy_views.keys()).sort()"))
 
-        # 2) exactly one physical websocket to the backend for both planes
+        # 2) exactly one physical websocket to the backend for both planes.
+        #    Checked in two parts, because the `/_event` filter alone cannot
+        #    see a regression: a chart that opened its own data plane would
+        #    land on some other URL and simply drop out of the count. So name
+        #    the plane explicitly first, then count what is left.
         time.sleep(1.5)
+        own = [u for u in probe.websockets() if "/_xy" in u]
+        if own:
+            failures.append(f"the chart opened its own data plane socket: {own}")
         ws = probe.backend_websockets()
-        print(f"backend websockets: {len(ws)}")
+        print(f"backend websockets: {len(ws)} (of {len(probe.websockets())} total)")
         if len(ws) != 1:
             failures.append(f"expected exactly 1 backend websocket (shared transport), got {ws}")
 

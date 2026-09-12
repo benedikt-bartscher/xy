@@ -61,8 +61,20 @@ let sharedPlane = null;
 // room membership is per-connection, not per-mount).
 const subCounts = new Map();
 
-// The data plane's channel name, matching XY_PLANE in data_plane.py.
+// The wire vocabulary. Every one of these mirrors a constant of the same name
+// in data_plane.py, and tests/reflex_adapter/test_assets.py asserts the two
+// declarations agree — so a rename on either side fails there rather than
+// silently producing a client that talks past the server.
 const XY_PLANE = "/_xy";
+const EVENT_SUB = "sub";
+const EVENT_UNSUB = "unsub";
+const EVENT_MSG = "msg";
+const EVENT_PAYLOAD = "payload";
+const EVENT_ERR = "err";
+// Connection lifecycle, owned by Reflex's channel handle rather than by the
+// data plane protocol, so these have no server-side counterpart.
+const EVENT_CONNECT = "connect";
+const EVENT_DISCONNECT = "disconnect";
 
 /**
  * The shared xy data plane: one Reflex channel on the app's own websocket.
@@ -473,7 +485,7 @@ export function XYChart(props) {
       // A reconnect can land on a fresh worker whose rebuilt figure starts at
       // version 1. Versions are monotonic only within this subscription epoch.
       resetEpoch();
-      plane.emit("sub", { fig: liveToken, px: el.clientWidth || null, mid });
+      plane.emit(EVENT_SUB, { fig: liveToken, px: el.clientWidth || null, mid });
     };
 
     const emitMessage = (m) => {
@@ -482,7 +494,7 @@ export function XYChart(props) {
       if (awaitingPayload || !plane.connected) return;
       const envelope = { fig: liveToken, mid, m };
       if (payloadVersion !== null) envelope.v = payloadVersion;
-      plane.emit("msg", envelope);
+      plane.emit(EVENT_MSG, envelope);
     };
 
     const withSelectionSeq = (m) => ({
@@ -933,10 +945,10 @@ export function XYChart(props) {
       resetEpoch();
     };
 
-    plane.on("payload", onPayload);
-    plane.on("msg", onMsg);
-    plane.on("err", onErr);
-    plane.on("disconnect", onDisconnect);
+    plane.on(EVENT_PAYLOAD, onPayload);
+    plane.on(EVENT_MSG, onMsg);
+    plane.on(EVENT_ERR, onErr);
+    plane.on(EVENT_DISCONNECT, onDisconnect);
     // Resubscribe on every (re)connect: after the app plane reconnects the
     // shared manager, rooms are gone and — on another backend node — the
     // figure itself may need a state-driven rebuild. `sub` triggers both.
@@ -947,7 +959,7 @@ export function XYChart(props) {
       errResyncs = 0;
       subscribe();
     };
-    plane.on("connect", onConnect);
+    plane.on(EVENT_CONNECT, onConnect);
     subCounts.set(liveToken, (subCounts.get(liveToken) || 0) + 1);
     if (plane.connected) subscribe();
 
@@ -974,15 +986,15 @@ export function XYChart(props) {
       destroyed = true;
       if (tracksClickInput) el.removeEventListener("click", rememberClick, true);
       resetEpoch();
-      plane.off("payload", onPayload);
-      plane.off("msg", onMsg);
-      plane.off("err", onErr);
-      plane.off("disconnect", onDisconnect);
-      plane.off("connect", onConnect);
+      plane.off(EVENT_PAYLOAD, onPayload);
+      plane.off(EVENT_MSG, onMsg);
+      plane.off(EVENT_ERR, onErr);
+      plane.off(EVENT_DISCONNECT, onDisconnect);
+      plane.off(EVENT_CONNECT, onConnect);
       const remaining = (subCounts.get(liveToken) || 1) - 1;
       if (remaining <= 0) {
         subCounts.delete(liveToken);
-        if (plane.connected) plane.emit("unsub", { fig: liveToken, mid });
+        if (plane.connected) plane.emit(EVENT_UNSUB, { fig: liveToken, mid });
       } else {
         subCounts.set(liveToken, remaining);
       }

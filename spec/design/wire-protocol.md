@@ -106,7 +106,7 @@ gate. This is the one request
 type a host may withhold: on the Reflex host it never reaches the kernel,
 because `XYChart.jsx` intercepts the outgoing message and invokes the
 `on_view_change` prop directly
-(`python/reflex_xy/assets/XYChart.jsx`) — that namespace
+(`python/reflex_xy/assets/XYChart.jsx`) — that channel
 registers no Python-side view callback.
 
 **`select`** — box select. Edges are ordered by `lod.normalize_window` with
@@ -305,7 +305,7 @@ non-atomically, the client listens to *both* change events, defers a torn
 pair — a column that no longer fits its buffer — without consuming the seq,
 and keys applied state on (seq, buffers identity), so the write that
 completes the pair re-fires the apply and repairs even a same-shape tear.
-The `/_xy` namespace has no synced traits, so it wraps the
+The `/_xy` channel has no synced traits, so it wraps the
 same spec and buffers in a room-wide `msg` push. In both cases the client
 reads the buffer layout from `spec.buffer_layout`, never from the shape of
 what arrived (§5).
@@ -320,7 +320,7 @@ out of the client's history stack. A document the client cannot validate
 logged — never partially applied. Built by `Figure.state_patch_message`;
 senders are `FigureWidget.set_view`/`select`/`clear_selection` (anywidget
 comm) and `reflex_xy.set_view`/`select`/`clear_selection` (room-wide on the
-`/_xy` namespace).
+`/_xy` channel).
 
 **`view_nav`** — `{type, op: "reset", axes?}`, no buffers. Navigation to the
 home ranges, well-defined for every receiver because home ranges are
