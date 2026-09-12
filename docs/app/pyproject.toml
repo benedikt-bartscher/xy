@@ -12,10 +12,10 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "pillow",
-    "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0",
-    "reflex-components-internal @ git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0#subdirectory=packages/reflex-components-internal",
-    "reflex-docgen @ git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0#subdirectory=packages/reflex-docgen",
-    "reflex-site-shared @ git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0#subdirectory=packages/reflex-site-shared",
+    "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@609b2f515fc9d00e9a63a056d00a7782c77323b0",
+    "reflex-components-internal @ git+https://github.com/benedikt-bartscher/reflex.git@609b2f515fc9d00e9a63a056d00a7782c77323b0#subdirectory=packages/reflex-components-internal",
+    "reflex-docgen @ git+https://github.com/benedikt-bartscher/reflex.git@609b2f515fc9d00e9a63a056d00a7782c77323b0#subdirectory=packages/reflex-docgen",
+    "reflex-site-shared @ git+https://github.com/benedikt-bartscher/reflex.git@609b2f515fc9d00e9a63a056d00a7782c77323b0#subdirectory=packages/reflex-site-shared",
     "xy[reflex]",
 ]
 
