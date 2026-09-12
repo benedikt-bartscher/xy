@@ -1367,6 +1367,36 @@ def test_ci_workflow_rejects_upload_condition_that_only_survives_in_a_comment(
     )
 
 
+def test_ci_workflow_rejects_a_same_named_step_vouching_for_its_shadow(
+    tmp_path: Path,
+) -> None:
+    """A namesake must not satisfy a check the step it shadows no longer passes.
+
+    Actions allows two steps to share a name, so addressing steps by name is
+    ambiguous: strip the condition from the real upload, add a conditioned
+    step of the same name after it, and a last-one-wins lookup would validate
+    the decoy while the artifact silently stops uploading after a failed gate.
+    """
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    jobs = verify_ci_workflow._job_blocks(workflow)
+    real = verify_ci_workflow._named_step_blocks(jobs["test"])["Upload regression benchmark report"]
+    decoy = (
+        "      - name: Upload regression benchmark report\n"
+        "        if: always()\n"
+        "        run: echo decoy\n"
+    )
+    path = tmp_path / "ci.yml"
+    path.write_text(
+        workflow.replace(real, real.replace("        if: always()\n", "", 1) + decoy),
+        encoding="utf-8",
+    )
+
+    errors = verify_ci_workflow.validate_workflow(path)
+
+    assert any("repeats step names" in error for error in errors)
+    assert any("missing required CI step" in error for error in errors)
+
+
 def test_ci_workflow_rejects_missing_wheel_upload(tmp_path: Path) -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     path = tmp_path / "ci.yml"

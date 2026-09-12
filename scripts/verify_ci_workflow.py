@@ -489,15 +489,55 @@ def _step_sequence_blocks(job_text: str) -> list[str]:
     return ["\n".join(block) for block in blocks]
 
 
-def _named_step_blocks(job_text: str) -> dict[str, str]:
-    """Return named blocks from the job's actual ``steps:`` sequence."""
-    blocks: dict[str, str] = {}
+def _step_names(job_text: str) -> list[str]:
+    """Return every step name in the job's ``steps:`` sequence, in order."""
+    names: list[str] = []
     for block in _step_sequence_blocks(job_text):
         first = _strip_yaml_comment(block.splitlines()[0])
         match = re.match(r"^      - name:\s*(.+?)\s*$", first)
         if match is not None:
+            names.append(match.group(1))
+    return names
+
+
+def _named_step_blocks(job_text: str) -> dict[str, str]:
+    """Return *unambiguously* named blocks from the job's ``steps:`` sequence.
+
+    Actions permits two steps to share a name, and a dict keyed by name would
+    silently keep the last one — so a step that lost a required `if` or `run`
+    could be vouched for by a later namesake that still has it. A duplicated
+    name is therefore dropped entirely: every `_require_step_*` lookup then
+    reports the step as missing instead of validating the wrong block.
+    `_require_unique_step_names` turns that into a message naming the clash.
+    """
+    blocks: dict[str, str] = {}
+    duplicated = {name for name in _step_names(job_text) if _step_names(job_text).count(name) > 1}
+    for block in _step_sequence_blocks(job_text):
+        first = _strip_yaml_comment(block.splitlines()[0])
+        match = re.match(r"^      - name:\s*(.+?)\s*$", first)
+        if match is not None and match.group(1) not in duplicated:
             blocks[match.group(1)] = block
     return blocks
+
+
+def _require_unique_step_names(
+    errors: list[str], jobs: dict[str, str], workflow_label: str
+) -> None:
+    """Every step name in a job must identify exactly one step.
+
+    Structural gates address steps by name, so a repeated name is an ambiguity
+    the gates cannot resolve: the duplicate may carry the condition or command
+    the original was required to have, leaving the real step unchecked.
+    """
+    for job, block in jobs.items():
+        names = _step_names(block)
+        duplicated = sorted({name for name in names if names.count(name) > 1})
+        if duplicated:
+            errors.append(
+                f"{workflow_label} {job} job repeats step names {duplicated} — the "
+                "structural gates address steps by name, so a namesake can satisfy a "
+                "check the step it shadows no longer passes"
+            )
 
 
 def _require_step_condition(
@@ -759,6 +799,7 @@ def validate_ci_workflow(path: Path = DEFAULT_CI_WORKFLOW) -> list[str]:
         errors.append("CI workflow must not set shell-init environment variables")
     _require_docs_spec_pr_paths_ignored(errors, text, "CI")
     _require_unshallow_checkouts(errors, text, "CI")
+    _require_unique_step_names(errors, jobs, "CI")
     missing_jobs = sorted(REQUIRED_CI_JOBS - set(jobs))
     if missing_jobs:
         errors.append(f"CI workflow missing required jobs: {missing_jobs}")
@@ -1174,6 +1215,7 @@ def validate_codspeed_workflow(path: Path = DEFAULT_CODSPEED_WORKFLOW) -> list[s
     errors: list[str] = []
     _require_unique_workflow_structure(errors, text, "CodSpeed", REQUIRED_CODSPEED_JOBS)
     _require_docs_spec_pr_paths_ignored(errors, text, "CodSpeed")
+    _require_unique_step_names(errors, jobs, "CodSpeed")
     _require_trigger_with_direct_option(
         errors,
         text,

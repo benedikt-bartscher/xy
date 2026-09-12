@@ -1543,8 +1543,8 @@ wheels = [
 
 [[package]]
 name = "reflex"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "click" },
     { name = "granian", extra = ["reload"] },
@@ -1575,8 +1575,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-base"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-base&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-base&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "packaging" },
     { name = "platformdirs" },
@@ -1586,8 +1586,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-code"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-code&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-code&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-core" },
@@ -1597,8 +1597,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-core"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-core&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-core&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "python-multipart" },
     { name = "reflex-base" },
@@ -1610,8 +1610,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-dataeditor"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-dataeditor&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-dataeditor&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-core" },
@@ -1619,24 +1619,24 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-gridjs"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-gridjs&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-gridjs&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
 ]
 
 [[package]]
 name = "reflex-components-lucide"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-lucide&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-lucide&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
 ]
 
 [[package]]
 name = "reflex-components-markdown"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-markdown&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-markdown&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-code" },
@@ -1646,16 +1646,16 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-moment"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-moment&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-moment&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
 ]
 
 [[package]]
 name = "reflex-components-plotly"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-plotly&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-plotly&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-core" },
@@ -1663,8 +1663,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-radix"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-radix&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-radix&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-core" },
@@ -1673,8 +1673,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-react-player"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-react-player&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-react-player&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-core" },
@@ -1682,16 +1682,16 @@ dependencies = [
 
 [[package]]
 name = "reflex-components-recharts"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-recharts&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-recharts&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
 ]
 
 [[package]]
 name = "reflex-components-sonner"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-sonner&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-components-sonner&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "reflex-base" },
     { name = "reflex-components-lucide" },
@@ -1699,8 +1699,8 @@ dependencies = [
 
 [[package]]
 name = "reflex-hosting-cli"
-version = "0.0.0.post3500.dev0+b8580ed1"
-source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-hosting-cli&rev=b8580ed1337487671569d5964ea362296005d8fa#b8580ed1337487671569d5964ea362296005d8fa" }
+version = "0.0.0.post3501.dev0+46cecf59"
+source = { git = "https://github.com/benedikt-bartscher/reflex.git?subdirectory=packages%2Freflex-hosting-cli&rev=46cecf595bb48a6200bb0047b60acc19306133b0#46cecf595bb48a6200bb0047b60acc19306133b0" }
 dependencies = [
     { name = "click" },
     { name = "httpx" },
@@ -2228,7 +2228,7 @@ dev = [
 requires-dist = [
     { name = "anywidget", specifier = ">=0.9" },
     { name = "numpy", specifier = ">=1.24" },
-    { name = "reflex", marker = "extra == 'reflex'", git = "https://github.com/benedikt-bartscher/reflex.git?rev=b8580ed1337487671569d5964ea362296005d8fa" },
+    { name = "reflex", marker = "extra == 'reflex'", git = "https://github.com/benedikt-bartscher/reflex.git?rev=46cecf595bb48a6200bb0047b60acc19306133b0" },
 ]
 provides-extras = ["reflex"]
 

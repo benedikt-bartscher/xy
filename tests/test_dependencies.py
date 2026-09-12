@@ -18,7 +18,7 @@ CORE_PACKAGE = ROOT / "python" / "xy"
 # assertion, and drop `test_docs_app_pins_the_same_reflex_commit`, when
 # channels are released.
 REFLEX_REQUIREMENT = (
-    "git+https://github.com/benedikt-bartscher/reflex.git@b8580ed1337487671569d5964ea362296005d8fa"
+    "git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0"
 )
 
 

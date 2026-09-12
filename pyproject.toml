@@ -39,7 +39,7 @@ dependencies = [
 # with the real floor the moment channels are released (see the design doc's
 # Status note).
 reflex = [
-    "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@b8580ed1337487671569d5964ea362296005d8fa",
+    "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@46cecf595bb48a6200bb0047b60acc19306133b0",
 ]
 
 [project.urls]
