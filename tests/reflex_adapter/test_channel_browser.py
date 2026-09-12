@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -94,21 +95,23 @@ def _fresh_registry():
 
 
 @pytest.fixture(scope="module")
-def chart_app(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Generator[AppHarness, None, None]:
+def chart_app() -> Generator[AppHarness, None, None]:
     """Build and serve the chart app.
 
-    Args:
-        tmp_path_factory: pytest fixture for creating temporary directories.
+    The root is a self-deleting temp dir rather than `tmp_path_factory`: a
+    compiled Reflex app is ~200 MB of `node_modules` and `.web`, and pytest
+    keeps its last three runs, so borrowing that retention would leave most of
+    a gigabyte behind per run — enough to fill a tmpfs `/tmp` after an
+    afternoon of local runs and make every *other* browser probe fail for want
+    of space. CI gets one run per job either way.
 
     Yields:
         The running harness.
     """
-    with AppHarness.create(
-        root=tmp_path_factory.mktemp("channel_chart_app"),
-        app_source=ChannelChartApp,
-    ) as harness:
+    with (
+        tempfile.TemporaryDirectory(prefix="xy-channel-chart-app-") as root,
+        AppHarness.create(root=Path(root), app_source=ChannelChartApp) as harness,
+    ):
         assert harness.app_instance is not None, "app is not running"
         yield harness
 
