@@ -3,13 +3,18 @@ name = "xy-docs-app"
 version = "0.1.0"
 description = "Documentation site for XY."
 requires-python = ">=3.11"
+# TEMPORARY: these four normally track reflex-dev/reflex@main, but `xy[reflex]`
+# requires the unreleased channel transport (reflex-dev/reflex#6932) and uv
+# refuses two URLs for one package. They therefore point at the same branch the
+# root pyproject does — all from one repo, so the framework is never half
+# branch and half main. Restore `@main` when channels land there.
 dependencies = [
     "numpy",
     "pillow",
-    "reflex @ git+https://github.com/reflex-dev/reflex@main",
-    "reflex-components-internal @ git+https://github.com/reflex-dev/reflex@main#subdirectory=packages/reflex-components-internal",
-    "reflex-docgen @ git+https://github.com/reflex-dev/reflex@main#subdirectory=packages/reflex-docgen",
-    "reflex-site-shared @ git+https://github.com/reflex-dev/reflex@main#subdirectory=packages/reflex-site-shared",
+    "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@make-sio-optional",
+    "reflex-components-internal @ git+https://github.com/benedikt-bartscher/reflex.git@make-sio-optional#subdirectory=packages/reflex-components-internal",
+    "reflex-docgen @ git+https://github.com/benedikt-bartscher/reflex.git@make-sio-optional#subdirectory=packages/reflex-docgen",
+    "reflex-site-shared @ git+https://github.com/benedikt-bartscher/reflex.git@make-sio-optional#subdirectory=packages/reflex-site-shared",
     "xy[reflex]",
 ]
 

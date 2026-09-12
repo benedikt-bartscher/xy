@@ -359,7 +359,7 @@ are client-local (§4, §5.2). `view_nav` carries only `reset`, which is
 well-defined for every receiver because home ranges are client-known.
 
 All three reuse the existing `msg` envelope in both transports (anywidget
-comm and the `/_xy` socket.io namespace), so Reflex room broadcast and
+comm and the `/_xy` Reflex channel), so Reflex room broadcast and
 notebook delivery need no new plumbing. Hover payloads (§7) ride the
 existing hover/pick messages — no new message, larger detail.
 

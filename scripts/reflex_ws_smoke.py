@@ -5,7 +5,7 @@ examples/reflex: `reflex run`) and asserts the load-bearing claims of the
 design:
 
 1. ONE physical websocket to the backend carries both the app plane and the
-   chart data plane (socket.io namespace multiplexing) — counted via CDP.
+   chart data plane (Reflex channel multiplexing) — counted via CDP.
 2. The charts paint real pixels from binary socket payloads (screenshot
    evidence; there are no HTTP data endpoints to fall back on) — including
    the §6 fastapi-parity drilldown chart's density surface.
@@ -191,7 +191,9 @@ class Probe:
         for (sid, method), events in self.s._events.items():
             if sid == self.sid and method == "Network.webSocketCreated":
                 urls.extend(e.get("url", "") for e in events)
-        return [u for u in urls if "/_event" in u or "/_xy" in u]
+        # The data plane is a channel *inside* this socket, so there is one
+        # URL to match — a second one would mean the chart opened its own.
+        return [u for u in urls if "/_event" in u]
 
     def sent_ws_frames(self, needle: str) -> list[str]:
         """Payloads of sent websocket frames containing `needle`."""

@@ -4,7 +4,7 @@ Status: **shipped**. This document specifies the message catalog dispatched by
 `xy.channel.handle_message` (`python/xy/channel.py`) and consumed by
 `js/src/54_kernel.ts`, plus the first-paint buffer layouts and the version
 handshake. The transport envelopes that carry these messages are separate:
-the anywidget comm (`python/xy/widget.py`), the `/_xy` socket.io namespace
+the anywidget comm (`python/xy/widget.py`), the `/_xy` Reflex channel
 ([reflex-integration.md](reflex-integration.md) §2), and the `XYBF` binary
 frame (`python/xy/_framing.py`, versioned in §7 below).
 
@@ -342,7 +342,7 @@ omitted from the message clear; never pushed to history, reported by
 (view-state.md §5.1).
 
 All three ride the existing `msg` envelope in both transports (anywidget
-comm and the `/_xy` socket.io namespace) behind the version handshake.
+comm and the `/_xy` Reflex channel) behind the version handshake.
 
 ## 5. First-paint buffer layout: packed vs split
 
@@ -361,8 +361,8 @@ spec's `columns` table is the addressing scheme, and it comes in two layouts:
   a `u8` column is folded into that column's own buffer, and `len` still
   counts only real values, so split is a byte-identical repack of packed. This
   is what both live hosts ship at first paint — `FigureWidget`
-  (`python/xy/widget.py`) and the `/_xy` namespace
-  (`python/reflex_xy/namespace.py`) — and on streaming append (§4),
+  (`python/xy/widget.py`) and the `/_xy` channel
+  (`python/reflex_xy/data_plane.py`) — and on streaming append (§4),
   with no join copy anywhere on a live path.
 
 The browser accepts genuine `ArrayBuffer` objects across JavaScript realm
@@ -449,8 +449,8 @@ that progress and starts no animation clock.
 
 ## 6. Chunked base64 (standalone export only)
 
-The comm and socket.io transports carry binary attachments natively and never
-base64. Standalone HTML export has no binary channel, so `xy.export` embeds
+The comm and Reflex channel transports carry binary attachments natively and
+never base64. Standalone HTML export has no binary channel, so `xy.export` embeds
 the packed blob as chunked base64:
 
 - The blob is sliced into `_B64_CHUNK_BYTES` = 48 MiB pieces. That size is

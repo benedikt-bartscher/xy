@@ -35,12 +35,19 @@ def test_core_publishes_only_the_reflex_optional_dependency() -> None:
     extras = project.get("optional-dependencies") or {}
 
     assert set(extras) == {"reflex"}
+    # TEMPORARY, tracked in spec/design/reflex-integration.md § Status: the
+    # data plane needs Reflex's channel transport, which is unreleased, so the
+    # extra names the branch instead of a floor. A direct reference is
+    # unpublishable by design — the release fails at upload rather than
+    # shipping a floor that installs a Reflex where every chart stays blank.
+    # Restore the `>=<version>` assertion when channels are released.
     assert any(
-        _dependency_name(requirement) == "reflex" and ">=0.9.6" in requirement
+        _dependency_name(requirement) == "reflex"
+        and "git+https://github.com/benedikt-bartscher/reflex.git@make-sio-optional" in requirement
         for requirement in extras["reflex"]
     ), (
-        "xy[reflex] must select the supported Reflex floor while the adapter "
-        "source remains bundled in the xy distribution"
+        "xy[reflex] must select the Reflex the adapter actually needs while the "
+        "adapter source remains bundled in the xy distribution"
     )
     assert {"dev", "codspeed"} <= groups.keys()
     group_names = {

@@ -10,9 +10,9 @@ Two equivalent entry points, both one line for the user:
 
 `setup` is idempotent; using both costs nothing.
 
-What setup does: registers the `/_xy` socket.io namespace on the app's
-existing AsyncServer (same physical websocket as the app plane — see
-namespace.py), wires publish fan-out, and adds a lifespan task that
+What setup does: registers the `/_xy` channel on the app's existing event
+websocket (data_plane.py — the same physical connection as the app plane),
+wires publish fan-out, and adds a lifespan task that
 registers this worker's chart plans (`_ensure_page_plans`, fail-closed),
 captures the event loop (for thread-safe broadcasts from sync handlers),
 and runs the registry TTL sweep.
@@ -29,8 +29,8 @@ from typing import Any, Optional, cast
 
 from reflex.plugins import Plugin
 
+from .data_plane import XYChannel
 from .handles import FigureHandle, token_of
-from .namespace import XYNamespace
 from .registry import _figure_of, registry
 from .state_bridge import make_rebuild_hook
 from .tokens import BUILDER_ATTR, PROBE_ATTR
@@ -48,24 +48,27 @@ __all__ = [
     "setup",
 ]
 
-_namespace: Optional[XYNamespace] = None
+_channel: Optional[XYChannel] = None
+# The app the current channel is attached to. Idempotency is per app, not
+# per process: a hot reload (and AppHarness) re-imports the app module, and
+# the new App gets its own websocket that must be attached to.
+_setup_app: Any = None
 
 
-def setup(app: Any) -> XYNamespace:
-    """Attach the xy data plane to a Reflex app (idempotent)."""
-    global _namespace
-    if _namespace is not None:
-        return _namespace
-    sio = getattr(app, "sio", None)
-    if sio is None:
-        msg = (
-            "reflex_xy.setup(app) needs the app's socket server; it exists "
-            "only when state is enabled (rx.App(enable_state=True), the default)."
-        )
-        raise RuntimeError(msg)
-    namespace = XYNamespace(registry, rebuild=make_rebuild_hook(app))
-    sio.register_namespace(namespace)
-    wire(namespace)
+def setup(app: Any) -> XYChannel:
+    """Attach the xy data plane to a Reflex app (idempotent).
+
+    The plane is a Reflex channel on the app's own event websocket. Reflex's
+    `register_channel` refuses an app that cannot carry one — state disabled,
+    or a non-WebSocket transport — so a misconfiguration fails here at startup
+    rather than as a blank chart in the browser.
+    """
+    global _channel, _setup_app
+    if _channel is not None and _setup_app is app:
+        return _channel
+    channel = XYChannel(registry, rebuild=make_rebuild_hook(app))
+    app.register_channel(channel)
+    wire(channel)
 
     def _lifespan() -> Coroutine[Any, Any, None]:
         # Deliberately a *sync* function returning the sweep coroutine, not an
@@ -80,8 +83,9 @@ def setup(app: Any) -> XYNamespace:
         return _xy_lifespan()
 
     app.register_lifespan_task(_lifespan)
-    _namespace = namespace
-    return namespace
+    _channel = channel
+    _setup_app = app
+    return channel
 
 
 def _ensure_page_plans(app: Any) -> None:
@@ -129,11 +133,11 @@ def _ensure_page_plans(app: Any) -> None:
         raise RuntimeError(msg)
 
 
-def wire(namespace: XYNamespace) -> None:
-    """Point the registry's fan-out seams at a namespace (setup and tests)."""
-    registry.on_publish(namespace.broadcast_payload)
-    registry.on_push(namespace.broadcast_message)
-    registry.on_error(namespace.broadcast_error)
+def wire(channel: XYChannel) -> None:
+    """Point the registry's fan-out seams at the data plane (setup and tests)."""
+    registry.on_publish(channel.broadcast_payload)
+    registry.on_push(channel.broadcast_message)
+    registry.on_error(channel.broadcast_error)
 
 
 async def _xy_lifespan() -> None:
@@ -331,6 +335,7 @@ def clear_selection(token: "str | FigureHandle") -> None:
 
 
 def reset_setup_for_tests() -> None:
-    """Forget the wired namespace (test isolation only)."""
-    global _namespace
-    _namespace = None
+    """Forget the wired data plane (test isolation only)."""
+    global _channel, _setup_app
+    _channel = None
+    _setup_app = None

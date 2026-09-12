@@ -97,7 +97,7 @@ async def rebuild_data(app: Any, parsed: ParsedToken) -> Optional[dict[str, Any]
 async def rebuild_plan_figure(app: Any, composite: ParsedPlanToken) -> Optional["Figure"]:
     """Recover a data-bound figure: plan (local map) + columns (registry or
     state) + bind. Raises PlanMissError / PlanBindError for spec-aware `err`
-    frames; anything else fails closed in the namespace."""
+    frames; anything else fails closed in the data plane."""
     plan = require_plan(composite.digest)
     entry = registry.get_columns(composite.data_token)
     if entry is not None:
@@ -116,7 +116,7 @@ async def rebuild_plan_figure(app: Any, composite: ParsedPlanToken) -> Optional[
 
 
 def make_rebuild_hook(app: Any) -> Any:
-    """The namespace's RebuildHook, bound to one app instance."""
+    """The data plane's RebuildHook, bound to one app instance."""
 
     async def _rebuild(token_str: str) -> Optional["Figure"]:
         composite = parse_plan_token(token_str)
