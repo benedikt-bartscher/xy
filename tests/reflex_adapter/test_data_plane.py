@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import socket
+import sys
 import threading
 from types import SimpleNamespace
 from typing import Any, Optional, TypedDict
@@ -395,18 +396,38 @@ def test_interaction_serializes_with_view_push_per_figure(_fresh_registry, monke
     assert other.active_operations == 0
 
 
-def test_a_broken_frame_fails_the_test_even_if_nothing_reads_it(_fresh_registry):
+def test_a_broken_frame_fails_the_test_even_if_nothing_reads_it(_fresh_registry, monkeypatch):
     """The harness must not let a broken wire pass as a green run.
 
-    A malformed frame reaches waiters through the queues, but a test that has
-    finished its assertions never pops again — so teardown is the last place
-    the failure can still be noticed.
+    Both halves have to hold: the reader has to *record* a decode failure
+    rather than die quietly, and teardown has to raise it. A test that has
+    finished its assertions never pops a queue again, so teardown is the last
+    place the failure can be noticed — and a reader that silently stopped
+    recording would make every other test in this file vacuous.
+
+    The frame really is decoded here; only the decoder is replaced, because a
+    real server cannot be made to emit a frame its own encoder would refuse.
     """
 
+    def explode(frame):
+        raise ValueError("frame did not decode")
+
     async def main():
+        token = registry.register(make_figure(8))
         async with data_plane_server() as (url, _):
-            client = await connect_client(url)
-            client.reader_error = ValueError("frame did not decode")
+            client = await connect_client(url)  # opened before the decoder breaks
+            # Patched on this module object: the reader resolves the decoder
+            # as a global here, and a dotted path would patch a second import
+            # of this file rather than the one running.
+            monkeypatch.setattr(sys.modules[__name__], "decode_channel_frame", explode)
+            await client.emit("sub", {"fig": token, "mid": "m1"})
+
+            # The error reaches the waiters rather than stranding them.
+            with pytest.raises(AssertionError, match="reader failed"):
+                await Collector.next(client.payloads)
+            assert isinstance(client.reader_error, ValueError)
+
+            # And teardown raises it too, for the test that never reads again.
             with pytest.raises(AssertionError, match="reader failed"):
                 await client.disconnect()
 

@@ -500,6 +500,30 @@ def _named_step_blocks(job_text: str) -> dict[str, str]:
     return blocks
 
 
+def _require_step_condition(
+    errors: list[str], jobs: dict[str, str], job: str, step: str, condition: str, description: str
+) -> None:
+    """Require one named step to carry ``if: <condition>`` as a real YAML key.
+
+    Substring matching cannot do this job once a second step in the same job
+    uses the same condition: the needle is satisfied by the neighbour while the
+    step it was written for quietly loses its own. Reading the step's direct
+    ``if`` key answers the actual question, and ignores the condition appearing
+    in a comment (``_yaml_code_lines`` strips those).
+    """
+    block = _named_step_blocks(jobs.get(job, "")).get(step)
+    if block is None:
+        errors.append(f"missing required CI step {step!r}")
+        return
+    values, unsafe = _step_direct_key_values(block, "if")
+    if unsafe or values != [condition]:
+        found = ", ".join(values) if values else "no direct `if` key"
+        errors.append(
+            f"CI {job} job step {step!r} missing {description}: expected a direct "
+            f"`if: {condition}` key, found {found}"
+        )
+
+
 def _require_step_contains(
     errors: list[str], job_text: str, step: str, description: str, *needles: str
 ) -> None:
@@ -815,17 +839,23 @@ def validate_ci_workflow(path: Path = DEFAULT_CI_WORKFLOW) -> list[str]:
         "scripts/verify_benchmark_report.py transport.json --kind transport-loopback",
         "scripts/check_regressions.py --scatter scatter.json --kernel kernel.json",
         "--transport transport.json --emit-md spec/benchmarks/metrics.md",
-        # Name and condition paired, not two independent needles: this job now
-        # has a second `if: always()` upload (the browser evidence), which a
-        # bare needle would satisfy on its behalf — letting *this* step lose
-        # its condition and stop uploading after a failed gate, silently.
-        "- name: Upload regression benchmark report\n        if: always()",
+        "Upload regression benchmark report",
         "actions/upload-artifact@",
         "regression-benchmark-report",
         "if-no-files-found: warn",
         "spec/benchmarks/metrics.md",
         "transport.json",
     )
+    # Both uploads in this job have to survive a failed gate — the regression
+    # report is the evidence for *why* it failed, the browser screenshot the
+    # evidence for what the chart looked like. Checked structurally, one step
+    # at a time, because they share a condition that a substring needle would
+    # let either of them borrow from the other.
+    for step, description in (
+        ("Upload regression benchmark report", "artifact upload after a failed gate"),
+        ("Upload browser evidence", "screenshot upload after a failed gate"),
+    ):
+        _require_step_condition(errors, jobs, "test", step, "always()", description)
     test_job = jobs.get("test", "")
     _require_step_runs_exactly(
         errors,

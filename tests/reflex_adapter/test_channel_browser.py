@@ -16,10 +16,13 @@ from pathlib import Path
 import pytest
 
 # This is the only check of the single-shared-websocket claim, so a missing
-# browser must not quietly turn it into a pass. `XY_REQUIRE_BROWSER=1` — what
-# CI sets — makes both the Python package and the browser binary hard
-# requirements; without it a bare checkout still skips.
-REQUIRE_BROWSER = os.environ.get("XY_REQUIRE_BROWSER") == "1"
+# browser must not quietly turn it into a pass. `XY_REQUIRE_BROWSER` — which CI
+# sets — makes both the Python package and the browser binary hard
+# requirements; without it a bare checkout still skips. Read for truthiness,
+# not for the literal "1", so this gate opens on exactly the same values as the
+# sibling one in tests/conftest.py: a mismatch there would fail every other
+# browser probe while leaving this one skipping.
+REQUIRE_BROWSER = bool(os.environ.get("XY_REQUIRE_BROWSER"))
 if not REQUIRE_BROWSER:
     pytest.importorskip("playwright")
 

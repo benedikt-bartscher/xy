@@ -1321,6 +1321,52 @@ def test_ci_workflow_rejects_regression_upload_that_skips_after_failures(
     assert any("test job" in error and "if: always()" in error for error in errors)
 
 
+def test_ci_workflow_rejects_browser_evidence_upload_that_skips_after_failures(
+    tmp_path: Path,
+) -> None:
+    """The screenshot is only evidence if it survives the run that failed."""
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    path = tmp_path / "ci.yml"
+    path.write_text(
+        workflow.replace(
+            "      - name: Upload browser evidence\n        if: always()\n",
+            "      - name: Upload browser evidence\n",
+        ),
+        encoding="utf-8",
+    )
+
+    errors = verify_ci_workflow.validate_workflow(path)
+
+    assert any("Upload browser evidence" in error and "if: always()" in error for error in errors)
+
+
+def test_ci_workflow_rejects_upload_condition_that_only_survives_in_a_comment(
+    tmp_path: Path,
+) -> None:
+    """The condition is read as a YAML key, not matched as text.
+
+    Two steps in this job share `if: always()`, so a substring needle can be
+    satisfied by the neighbour — or by the condition lingering in a comment
+    after the real key is gone — while the upload silently stops running.
+    """
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    path = tmp_path / "ci.yml"
+    path.write_text(
+        workflow.replace(
+            "      - name: Upload regression benchmark report\n        if: always()\n",
+            "      - name: Upload regression benchmark report\n        # if: always()\n",
+        ),
+        encoding="utf-8",
+    )
+
+    errors = verify_ci_workflow.validate_workflow(path)
+
+    assert any(
+        "Upload regression benchmark report" in error and "if: always()" in error
+        for error in errors
+    )
+
+
 def test_ci_workflow_rejects_missing_wheel_upload(tmp_path: Path) -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     path = tmp_path / "ci.yml"
