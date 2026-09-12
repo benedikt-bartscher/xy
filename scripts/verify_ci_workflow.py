@@ -489,14 +489,35 @@ def _step_sequence_blocks(job_text: str) -> list[str]:
     return ["\n".join(block) for block in blocks]
 
 
-def _step_names(job_text: str) -> list[str]:
-    """Return every step name in the job's ``steps:`` sequence, in order."""
-    names: list[str] = []
+def _decode_step_name(raw: str) -> tuple[Optional[str], bool]:
+    """Return a step's name as YAML reads it, and whether the spelling is safe.
+
+    Two steps named ``Upload it`` and ``"Upload it"`` are the same step name to
+    Actions but different strings to a lexer, so comparing raw text would let a
+    quoted namesake slip past both the duplicate check and the by-name lookup.
+    Quoted spellings are therefore normalized exactly as mapping keys are.
+    Anything a line-local lexer cannot resolve — a block scalar, node
+    properties, an empty name — fails closed instead of being guessed at.
+
+    Args:
+        raw: The text following ``name:`` on the step's first line.
+
+    Returns:
+        The decoded name, or None with a True flag when it is unsupported.
+    """
+    if not raw or raw[0] in {"|", ">", "&", "!", "*"}:
+        return None, True
+    return _decode_yaml_key(raw)
+
+
+def _step_names(job_text: str) -> list[tuple[Optional[str], bool]]:
+    """Return ``(name, unsafe)`` for every named step, in sequence order."""
+    names: list[tuple[Optional[str], bool]] = []
     for block in _step_sequence_blocks(job_text):
         first = _strip_yaml_comment(block.splitlines()[0])
         match = re.match(r"^      - name:\s*(.+?)\s*$", first)
         if match is not None:
-            names.append(match.group(1))
+            names.append(_decode_step_name(match.group(1)))
     return names
 
 
@@ -509,14 +530,26 @@ def _named_step_blocks(job_text: str) -> dict[str, str]:
     name is therefore dropped entirely: every `_require_step_*` lookup then
     reports the step as missing instead of validating the wrong block.
     `_require_unique_step_names` turns that into a message naming the clash.
+
+    Names are compared after decoding, so quoting one of a pair cannot hide the
+    collision, and a name whose spelling cannot be decoded is dropped too.
     """
+    decoded = _step_names(job_text)
+    unusable = {
+        name
+        for name, unsafe in decoded
+        if unsafe or [candidate for candidate, _ in decoded].count(name) > 1
+    }
     blocks: dict[str, str] = {}
-    duplicated = {name for name in _step_names(job_text) if _step_names(job_text).count(name) > 1}
     for block in _step_sequence_blocks(job_text):
         first = _strip_yaml_comment(block.splitlines()[0])
         match = re.match(r"^      - name:\s*(.+?)\s*$", first)
-        if match is not None and match.group(1) not in duplicated:
-            blocks[match.group(1)] = block
+        if match is None:
+            continue
+        name, unsafe = _decode_step_name(match.group(1))
+        if unsafe or name is None or name in unusable:
+            continue
+        blocks[name] = block
     return blocks
 
 
@@ -530,7 +563,14 @@ def _require_unique_step_names(
     the original was required to have, leaving the real step unchecked.
     """
     for job, block in jobs.items():
-        names = _step_names(block)
+        decoded = _step_names(block)
+        if any(unsafe for _name, unsafe in decoded):
+            errors.append(
+                f"{workflow_label} {job} job has a step name this checker cannot resolve "
+                "(block scalar, node property, or unsupported escape) — the structural "
+                "gates address steps by name and cannot verify one they cannot read"
+            )
+        names = [name for name, unsafe in decoded if not unsafe and name is not None]
         duplicated = sorted({name for name in names if names.count(name) > 1})
         if duplicated:
             errors.append(
