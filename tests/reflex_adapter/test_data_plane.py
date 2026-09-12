@@ -160,13 +160,19 @@ class PlaneClient:
             return
         self.connected = False
         self._reader.cancel()
-        # Any reader failure was already handed to the waiters, so teardown
-        # only has to retrieve it — re-raising here would replace a test's real
-        # assertion failure with a confusing one from the cleanup path.
-        with contextlib.suppress(BaseException):
+        # Only the two outcomes teardown can legitimately produce: the
+        # cancellation just requested, and a reset from the socket going away.
+        # Anything else is a defect and should reach the test.
+        with contextlib.suppress(asyncio.CancelledError, ConnectionResetError):
             await self._reader
         await self._ws.close()
         await self._session.close()
+        if self.reader_error is not None:
+            # The failure was handed to every waiter, but a test that finished
+            # its assertions without reading again would never have popped it —
+            # and a broken wire must not leave the suite green. Raised after the
+            # socket is closed so a failing test still tears down cleanly.
+            raise AssertionError("the data plane reader failed") from self.reader_error
 
 
 async def connect_client(base_url: str, client_token: str = CLIENT_TOKEN) -> PlaneClient:
@@ -387,6 +393,24 @@ def test_interaction_serializes_with_view_push_per_figure(_fresh_registry, monke
     assert primary_view_entered.is_set()
     assert primary.active_operations == 0
     assert other.active_operations == 0
+
+
+def test_a_broken_frame_fails_the_test_even_if_nothing_reads_it(_fresh_registry):
+    """The harness must not let a broken wire pass as a green run.
+
+    A malformed frame reaches waiters through the queues, but a test that has
+    finished its assertions never pops again — so teardown is the last place
+    the failure can still be noticed.
+    """
+
+    async def main():
+        async with data_plane_server() as (url, _):
+            client = await connect_client(url)
+            client.reader_error = ValueError("frame did not decode")
+            with pytest.raises(AssertionError, match="reader failed"):
+                await client.disconnect()
+
+    run(main())
 
 
 def test_sub_delivers_spec_and_binary_columns(_fresh_registry):
