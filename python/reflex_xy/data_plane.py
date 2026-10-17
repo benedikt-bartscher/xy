@@ -619,7 +619,12 @@ class XYChannel(rx.channels.Channel):
                 return entry, None
 
             try:
-                await self.broadcast_payload(token, entry)
+                # Through the registry's seam, which reaches the subscribers of
+                # every attached app: one left on the old version would have
+                # its requests dropped as stale. A channel used on its own,
+                # outside setup(), has no seam and serves its own room.
+                if not await self.registry.fan_out(token, entry):
+                    await self.broadcast_payload(token, entry)
             except Exception:  # noqa: BLE001 - payload build/send is a protocol boundary
                 # A failed generation must not poison later cache hits. Remove
                 # only the generation this attempt inserted; if a normal

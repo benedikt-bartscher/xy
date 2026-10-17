@@ -96,6 +96,38 @@ def test_publish_fans_out_to_every_live_app(_fresh_registry, monkeypatch):
     assert {name for name, _ in delivered} == {token}
 
 
+def test_a_rebuild_fans_out_to_every_live_app(monkeypatch):
+    """A cache-miss rebuild in one app reaches the other app's subscribers too.
+
+    The rebuilt generation carries a new version; a subscriber left on the old
+    one would have its hover, pick and selection requests dropped as stale.
+    """
+    app_a, app_b = make_app(), make_app()
+    channel_a, channel_b = setup(app_a), setup(app_b)
+    delivered: list[tuple[object, object]] = []
+
+    for channel in (channel_a, channel_b):
+
+        async def broadcast(token, entry, _channel=channel):
+            delivered.append((_channel, entry))
+
+        monkeypatch.setattr(channel, "broadcast_payload", broadcast)
+
+    async def rebuild(token):
+        return make_figure()
+
+    monkeypatch.setattr(channel_a, "_rebuild", rebuild)
+
+    async def main():
+        return await channel_a._start_rebuild_attempt("evicted")
+
+    entry, failure = asyncio.run(main())
+
+    assert failure is None
+    assert {id(channel) for channel, _ in delivered} == {id(channel_a), id(channel_b)}
+    assert all(sent is entry for _, sent in delivered)
+
+
 def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypatch):
     registry = _fresh_registry
     app_a, app_b = make_app(), make_app()

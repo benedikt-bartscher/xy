@@ -691,6 +691,19 @@ class FigureRegistry:
             entry.touch()
             return entry
 
+    async def fan_out(self, token: str, entry: FigureEntry) -> bool:
+        """Push ``entry`` to subscribers through the publish seam, awaiting it.
+
+        Unlike ``schedule_broadcast``, the caller sees a failed send, so a
+        cache-miss rebuild can retract the generation it could not deliver.
+        Returns whether a seam is wired; nothing is sent when none is.
+        """
+        callback = self._on_publish
+        if callback is None:
+            return False
+        await callback(token, entry)
+        return True
+
     def schedule_broadcast(self, token: str) -> None:
         """Fan a publish out to subscribers from any thread.
 

@@ -453,7 +453,9 @@ remains, both the sweep and an explicit release retain only the removed token's
 scalar version so a republish on the same worker stays monotonic; the figure
 and its data buffers are released. If an interaction is the first touch after
 eviction, the data plane
-rebuilds, sends every subscribed mount a replacement payload room-wide, and
+rebuilds, sends every subscribed mount a replacement payload room-wide (in
+every app attached in the process, through the registry seam a normal publish
+fans out on), and
 drops the old-generation interaction for the triggering client to retry. If a
 new `sub` is first, the data plane broadcasts the rebuild to existing room
 members before joining the requester, then sends that mount one `mid`-addressed
