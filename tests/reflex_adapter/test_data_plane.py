@@ -92,7 +92,8 @@ class PlaneClient:
     """One connected websocket with the `/_xy` channel open.
 
     Mirrors what XYChart.jsx does through `getChannel("/_xy")`: the app's own
-    event websocket, one `_open` for the channel, and every data plane frame
+    event websocket, opened by a `_connect` frame the backend acknowledges
+    with `_handshake`, one `_open` for the channel, and every data plane frame
     arriving as `(metadata, attachments)`.
     """
 
@@ -103,6 +104,7 @@ class PlaneClient:
         self.payloads: asyncio.Queue = asyncio.Queue()
         self.messages: asyncio.Queue = asyncio.Queue()
         self.errors: asyncio.Queue = asyncio.Queue()
+        self._handshaken = asyncio.Event()
         self._opened = asyncio.Event()
         self.reader_error: Optional[BaseException] = None
         self._queues = {
@@ -141,6 +143,9 @@ class PlaneClient:
                 if event == "_ping":
                     await self._ws.send_str(json.dumps(["_pong"]))
                     continue
+                if event == "_handshake":
+                    self._handshaken.set()
+                    continue
                 if event == "_opened" and channel == XY_PLANE:
                     self._opened.set()
                     continue
@@ -151,6 +156,12 @@ class PlaneClient:
     async def emit(self, event: str, data: Any) -> None:
         """Send one data plane message on the `/_xy` channel."""
         await self._ws.send_str(json.dumps([event, data, XY_PLANE]))
+
+    async def open_session(self) -> None:
+        # The backend opens a session only for a socket whose first frame is
+        # `_connect`, as websocket.js sends on open; it carries no boot event.
+        await self._ws.send_str(json.dumps(["_connect", {}]))
+        await asyncio.wait_for(self._handshaken.wait(), 5.0)
 
     async def open_plane(self) -> None:
         await self.emit("_open", None)
@@ -181,6 +192,7 @@ async def connect_client(base_url: str, client_token: str = CLIENT_TOKEN) -> Pla
     session = aiohttp.ClientSession()
     ws = await session.ws_connect(f"{base_url.replace('http', 'ws')}/_event?token={client_token}")
     client = PlaneClient(session, ws)
+    await client.open_session()
     await client.open_plane()
     return client
 
