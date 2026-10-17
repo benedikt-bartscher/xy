@@ -5,6 +5,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 # Actions are pinned to full commit SHAs (`@<40-hex> # vX`) per the org policy,
 # so fixtures strip a step by its action *path*, not a version tag — a SHA bump
 # must not silently turn these negative tests into no-ops.
@@ -1419,6 +1421,56 @@ def test_ci_workflow_rejects_a_quoted_namesake_shadowing_a_step(tmp_path: Path) 
     errors = verify_ci_workflow.validate_workflow(path)
 
     assert any("repeats step names" in error and name in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "decoy",
+    [
+        pytest.param(
+            "      - uses: actions/checkout@v6\n        name: {name}\n        if: always()\n",
+            id="name-after-uses",
+        ),
+        pytest.param(
+            '      - "name": {name}\n        if: always()\n        run: echo decoy\n',
+            id="quoted-name-key",
+        ),
+    ],
+)
+def test_ci_workflow_rejects_a_namesake_in_any_step_spelling(tmp_path: Path, decoy: str) -> None:
+    """A step's name key is its name wherever it sits and however it is quoted.
+
+    Reading only a first-line ``- name:`` missed a namesake that starts with
+    ``uses`` or quotes its key, so the duplicate check never saw it.
+    """
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    name = "Upload regression benchmark report"
+    real = verify_ci_workflow._named_step_blocks(verify_ci_workflow._job_blocks(workflow)["test"])[
+        name
+    ]
+    path = tmp_path / "ci.yml"
+    path.write_text(workflow.replace(real, real + decoy.format(name=name)), encoding="utf-8")
+
+    errors = verify_ci_workflow.validate_workflow(path)
+
+    assert any("repeats step names" in error and name in error for error in errors)
+
+
+def test_ci_workflow_finds_a_step_named_after_its_uses_key(tmp_path: Path) -> None:
+    """A step that starts with ``uses`` and names itself after it is still found."""
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    name = "Upload regression benchmark report"
+    real = verify_ci_workflow._named_step_blocks(verify_ci_workflow._job_blocks(workflow)["test"])[
+        name
+    ]
+    lines = real.splitlines()
+    uses = next(line for line in lines if line.startswith("        uses:"))
+    reordered = [f"      - {uses.strip()}", f"        name: {name}"] + [
+        line for line in lines[1:] if line != uses
+    ]
+    path = tmp_path / "ci.yml"
+    path.write_text(workflow.replace(real, "\n".join(reordered)), encoding="utf-8")
+
+    assert verify_ci_workflow.validate_workflow(path) == []
 
 
 def test_ci_workflow_rejects_a_step_name_it_cannot_resolve(tmp_path: Path) -> None:

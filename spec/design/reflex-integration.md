@@ -355,7 +355,9 @@ that raise answer `err {fig, error}`; the client logs and shows an empty mount
 rather than crashing the page. During rebuild, payload construction or room
 fan-out failures likewise answer `err` and remove only the generation that
 attempt inserted, so a later subscription retries; a concurrent normal
-replacement is never removed.
+replacement is never removed. A fan-out counts as failed only when no attached
+app received the payload: one app failing while another received it is logged
+and the generation kept, since the healthy app's subscribers already hold it.
 
 ### 3.3 Access control
 

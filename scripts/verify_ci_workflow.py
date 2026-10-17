@@ -500,7 +500,7 @@ def _decode_step_name(raw: str) -> tuple[Optional[str], bool]:
     properties, an empty name — fails closed instead of being guessed at.
 
     Args:
-        raw: The text following ``name:`` on the step's first line.
+        raw: The raw value of the step's ``name`` key.
 
     Returns:
         The decoded name, or None with a True flag when it is unsupported.
@@ -510,15 +510,25 @@ def _decode_step_name(raw: str) -> tuple[Optional[str], bool]:
     return _decode_yaml_key(raw)
 
 
+def _step_name(block: str) -> Optional[tuple[Optional[str], bool]]:
+    """Return a step's decoded ``(name, unsafe)``, or None for an unnamed step.
+
+    The ``name`` key is read like any direct key of the step mapping, so it
+    counts after a leading ``uses`` and under a quoted spelling. A step whose
+    keys include one the decoder cannot read, which might be ``name``, or that
+    repeats ``name``, fails closed.
+    """
+    values, unsafe = _step_direct_key_values(block, "name")
+    if unsafe or len(values) > 1:
+        return None, True
+    return _decode_step_name(values[0]) if values else None
+
+
 def _step_names(job_text: str) -> list[tuple[Optional[str], bool]]:
     """Return ``(name, unsafe)`` for every named step, in sequence order."""
-    names: list[tuple[Optional[str], bool]] = []
-    for block in _step_sequence_blocks(job_text):
-        first = _strip_yaml_comment(block.splitlines()[0])
-        match = re.match(r"^      - name:\s*(.+?)\s*$", first)
-        if match is not None:
-            names.append(_decode_step_name(match.group(1)))
-    return names
+    return [
+        name for block in _step_sequence_blocks(job_text) if (name := _step_name(block)) is not None
+    ]
 
 
 def _named_step_blocks(job_text: str) -> dict[str, str]:
@@ -542,11 +552,9 @@ def _named_step_blocks(job_text: str) -> dict[str, str]:
     }
     blocks: dict[str, str] = {}
     for block in _step_sequence_blocks(job_text):
-        first = _strip_yaml_comment(block.splitlines()[0])
-        match = re.match(r"^      - name:\s*(.+?)\s*$", first)
-        if match is None:
+        if (named := _step_name(block)) is None:
             continue
-        name, unsafe = _decode_step_name(match.group(1))
+        name, unsafe = named
         if unsafe or name is None or name in unusable:
             continue
         blocks[name] = block

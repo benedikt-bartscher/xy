@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import logging
 import warnings
 from collections.abc import Callable, Coroutine, Sequence
 from typing import Any, Optional, cast
@@ -35,6 +36,8 @@ from .registry import _figure_of, registry
 from .state_bridge import app_ref, make_rebuild_hook
 from .tokens import BUILDER_ATTR, PROBE_ATTR
 from .vars import AsyncFigureVar, FigureVar
+
+_logger = logging.getLogger("reflex_xy")
 
 __all__ = [
     "FigureProbeError",
@@ -174,21 +177,32 @@ def wire_attached() -> None:
     registry.on_error(_fan_out_error)
 
 
-async def _fan_out(calls: "Sequence[Coroutine[Any, Any, None]]") -> None:
+async def _fan_out(
+    calls: "Sequence[Coroutine[Any, Any, None]]", *, partial_ok: bool = False
+) -> None:
     """Await every fan-out, then re-raise the first failure.
 
     One app's transport failing must not swallow the others' deliveries — that
     is the whole point of fanning out — but the error still has to surface the
     way a single-plane send does, so it is raised after the rest have run.
+    With ``partial_ok`` it is only logged once another app was delivered to.
     """
     results = await asyncio.gather(*calls, return_exceptions=True)
-    for result in results:
-        if isinstance(result, BaseException):
-            raise result
+    failures = [result for result in results if isinstance(result, BaseException)]
+    if not failures:
+        return
+    if not partial_ok or len(failures) == len(results):
+        raise failures[0]
+    for failure in failures:
+        _logger.error("reflex_xy: an attached app missed a fan-out", exc_info=failure)
 
 
 async def _fan_out_payload(token: str, entry: Any) -> None:
-    await _fan_out([plane.broadcast_payload(token, entry) for plane in _live_planes()])
+    # A payload some app received is a delivered generation: raising would make
+    # a rebuild retract it from that app's subscribers.
+    await _fan_out(
+        [plane.broadcast_payload(token, entry) for plane in _live_planes()], partial_ok=True
+    )
 
 
 async def _fan_out_message(

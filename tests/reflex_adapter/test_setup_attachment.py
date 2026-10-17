@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import logging
 
 import numpy as np
 import pytest
@@ -128,11 +129,13 @@ def test_a_rebuild_fans_out_to_every_live_app(monkeypatch):
     assert all(sent is entry for _, sent in delivered)
 
 
-def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypatch):
-    registry = _fresh_registry
-    app_a, app_b = make_app(), make_app()
-    channel_a, channel_b = setup(app_a), setup(app_b)
-    reached = []
+def _one_plane_fails(monkeypatch, channel_a, channel_b) -> list[str]:
+    """Make app A's payload delivery fail while app B's succeeds.
+
+    Returns:
+        The tokens app B received.
+    """
+    reached: list[str] = []
 
     async def boom(token, entry):
         raise RuntimeError("transport failed")
@@ -142,6 +145,35 @@ def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypa
 
     monkeypatch.setattr(channel_a, "broadcast_payload", boom)
     monkeypatch.setattr(channel_b, "broadcast_payload", ok)
+    return reached
+
+
+def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypatch, caplog):
+    """A payload another app received is delivered; the failing app is logged."""
+    registry = _fresh_registry
+    app_a, app_b = make_app(), make_app()
+    channel_a, channel_b = setup(app_a), setup(app_b)
+    reached = _one_plane_fails(monkeypatch, channel_a, channel_b)
+
+    async def main():
+        entry = registry.publish("tok", make_figure(), broadcast=False)
+        await adapter_app._fan_out_payload("tok", entry)
+
+    with caplog.at_level(logging.ERROR, logger="reflex_xy"):
+        asyncio.run(main())
+    assert reached == ["tok"], "the healthy plane must still have received the payload"
+    assert ["transport failed" in str(r.exc_info) for r in caplog.records] == [True]
+
+
+def test_a_payload_no_plane_received_still_raises(_fresh_registry, monkeypatch):
+    """With every app failing, the error surfaces as a single-plane send's does."""
+    registry = _fresh_registry
+    channel = setup(make_app())
+
+    async def boom(token, entry):
+        raise RuntimeError("transport failed")
+
+    monkeypatch.setattr(channel, "broadcast_payload", boom)
 
     async def main():
         entry = registry.publish("tok", make_figure(), broadcast=False)
@@ -149,7 +181,32 @@ def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypa
             await adapter_app._fan_out_payload("tok", entry)
 
     asyncio.run(main())
-    assert reached == ["tok"], "the healthy plane must still have received the payload"
+
+
+def test_a_rebuild_keeps_a_generation_another_app_received(_fresh_registry, monkeypatch):
+    """One app failing to receive a rebuild must not retract it from the others.
+
+    Their subscribers already hold the rebuilt version; removing the entry
+    would turn their next versioned interaction into another cache miss.
+    """
+    registry = _fresh_registry
+    app_a, app_b = make_app(), make_app()
+    channel_a, channel_b = setup(app_a), setup(app_b)
+    reached = _one_plane_fails(monkeypatch, channel_a, channel_b)
+
+    async def rebuild(token):
+        return make_figure()
+
+    monkeypatch.setattr(channel_a, "_rebuild", rebuild)
+
+    async def main():
+        return await channel_a._start_rebuild_attempt("evicted")
+
+    entry, failure = asyncio.run(main())
+
+    assert failure is None
+    assert reached == ["evicted"]
+    assert registry.get("evicted") is entry
 
 
 def test_a_collected_app_stops_receiving_fan_out():
