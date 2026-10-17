@@ -161,13 +161,39 @@ class PlaneClient:
         # The backend opens a session only for a socket whose first frame is
         # `_connect`, as websocket.js sends on open; it carries no boot event.
         await self._ws.send_str(json.dumps(["_connect", {}]))
-        await asyncio.wait_for(self._handshaken.wait(), 5.0)
+        await self._await_setup(self._handshaken, "the handshake")
 
     async def open_plane(self) -> None:
         await self.emit("_open", None)
-        await asyncio.wait_for(self._opened.wait(), 5.0)
+        await self._await_setup(self._opened, "the channel opened")
 
-    async def disconnect(self) -> None:
+    async def _await_setup(self, step: asyncio.Event, what: str) -> None:
+        """Wait for one setup step, failing at once if the reader stops first.
+
+        A malformed frame or a socket the backend closed ends the reader; the
+        cause belongs in the failure, not behind a timeout.
+        """
+        waiter = asyncio.ensure_future(step.wait())
+        try:
+            await asyncio.wait(
+                {waiter, self._reader}, timeout=5.0, return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            waiter.cancel()
+        if step.is_set():
+            return
+        if self.reader_error is not None:
+            raise AssertionError(
+                f"the data plane reader failed before {what}"
+            ) from self.reader_error
+        if self._reader.done():
+            raise AssertionError(
+                f"the backend closed the socket (code {self._ws.close_code}) before {what}"
+            )
+        raise TimeoutError(f"no {what} within 5s")
+
+    async def close(self) -> None:
+        """Stop reading and close the socket and its session, raising nothing."""
         if not self.connected:
             return
         self.connected = False
@@ -179,6 +205,11 @@ class PlaneClient:
             await self._reader
         await self._ws.close()
         await self._session.close()
+
+    async def disconnect(self) -> None:
+        if not self.connected:
+            return
+        await self.close()
         if self.reader_error is not None:
             # The failure was handed to every waiter, but a test that finished
             # its assertions without reading again would never have popped it —
@@ -188,12 +219,26 @@ class PlaneClient:
 
 
 async def connect_client(base_url: str, client_token: str = CLIENT_TOKEN) -> PlaneClient:
-    """Connect the way XYChart.jsx does: the app socket, token in the query."""
+    """Connect the way XYChart.jsx does: the app socket, token in the query.
+
+    A client that cannot finish setup is closed, session included, before the
+    failure propagates.
+    """
     session = aiohttp.ClientSession()
-    ws = await session.ws_connect(f"{base_url.replace('http', 'ws')}/_event?token={client_token}")
-    client = PlaneClient(session, ws)
-    await client.open_session()
-    await client.open_plane()
+    client: Optional[PlaneClient] = None
+    try:
+        ws = await session.ws_connect(
+            f"{base_url.replace('http', 'ws')}/_event?token={client_token}"
+        )
+        client = PlaneClient(session, ws)
+        await client.open_session()
+        await client.open_plane()
+    except BaseException:
+        if client is None:
+            await session.close()
+        else:
+            await client.close()
+        raise
     return client
 
 
@@ -406,6 +451,34 @@ def test_interaction_serializes_with_view_push_per_figure(_fresh_registry, monke
     assert primary_view_entered.is_set()
     assert primary.active_operations == 0
     assert other.active_operations == 0
+
+
+def test_a_refused_session_fails_setup_at_once_and_closes_it(monkeypatch):
+    """A socket the backend refuses fails `connect_client` with the cause.
+
+    Without a client token the backend never links the socket and closes it
+    before the handshake. The setup waits must notice the reader stopping
+    rather than run out their timeout, and the session must not leak.
+    """
+    sessions: list[aiohttp.ClientSession] = []
+    open_session = aiohttp.ClientSession
+
+    def recording_session() -> aiohttp.ClientSession:
+        sessions.append(session := open_session())
+        return session
+
+    monkeypatch.setattr(aiohttp, "ClientSession", recording_session)
+
+    async def main():
+        async with data_plane_server() as (url, _):
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            with pytest.raises(AssertionError, match=r"closed the socket .* before the handshake"):
+                await connect_client(url, client_token="")
+            assert loop.time() - started < 2.0
+
+    run(main())
+    assert [session.closed for session in sessions] == [True]
 
 
 def test_a_broken_frame_fails_the_test_even_if_nothing_reads_it(_fresh_registry, monkeypatch):
