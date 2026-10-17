@@ -129,13 +129,17 @@ def test_a_rebuild_fans_out_to_every_live_app(monkeypatch):
     assert all(sent is entry for _, sent in delivered)
 
 
-def _one_plane_fails(monkeypatch, channel_a, channel_b) -> list[str]:
+def _one_plane_fails(
+    monkeypatch, channel_a, channel_b
+) -> tuple[list[str], list[tuple[str, str, bool]]]:
     """Make app A's payload delivery fail while app B's succeeds.
 
     Returns:
-        The tokens app B received.
+        The tokens app B received, and the ``(app, token, resync)`` error
+        broadcasts either app sent.
     """
     reached: list[str] = []
+    errors: list[tuple[str, str, bool]] = []
 
     async def boom(token, entry):
         raise RuntimeError("transport failed")
@@ -143,17 +147,29 @@ def _one_plane_fails(monkeypatch, channel_a, channel_b) -> list[str]:
     async def ok(token, entry):
         reached.append(token)
 
+    def record(app):
+        async def broadcast_error(token, error, resync=False):
+            errors.append((app, token, resync))
+
+        return broadcast_error
+
     monkeypatch.setattr(channel_a, "broadcast_payload", boom)
     monkeypatch.setattr(channel_b, "broadcast_payload", ok)
-    return reached
+    monkeypatch.setattr(channel_a, "broadcast_error", record("a"))
+    monkeypatch.setattr(channel_b, "broadcast_error", record("b"))
+    return reached, errors
 
 
 def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypatch, caplog):
-    """A payload another app received is delivered; the failing app is logged."""
+    """A payload another app received is delivered; the failing app resyncs.
+
+    Its subscribers keep the old version, whose requests are dropped as stale,
+    so only a resubscribe brings them back.
+    """
     registry = _fresh_registry
     app_a, app_b = make_app(), make_app()
     channel_a, channel_b = setup(app_a), setup(app_b)
-    reached = _one_plane_fails(monkeypatch, channel_a, channel_b)
+    reached, errors = _one_plane_fails(monkeypatch, channel_a, channel_b)
 
     async def main():
         entry = registry.publish("tok", make_figure(), broadcast=False)
@@ -162,7 +178,32 @@ def test_one_failing_plane_does_not_swallow_the_others(_fresh_registry, monkeypa
     with caplog.at_level(logging.ERROR, logger="reflex_xy"):
         asyncio.run(main())
     assert reached == ["tok"], "the healthy plane must still have received the payload"
-    assert ["transport failed" in str(r.exc_info) for r in caplog.records] == [True]
+    assert errors == [("a", "tok", True)]
+    assert [
+        ("tok" in r.getMessage(), "transport failed" in str(r.exc_info)) for r in caplog.records
+    ] == [(True, True)]
+
+
+def test_a_failed_resync_is_only_logged(_fresh_registry, monkeypatch, caplog):
+    """A resync the failing app cannot send either must not undo the delivery."""
+    registry = _fresh_registry
+    app_a, app_b = make_app(), make_app()
+    channel_a, channel_b = setup(app_a), setup(app_b)
+    reached, _ = _one_plane_fails(monkeypatch, channel_a, channel_b)
+
+    async def resync_fails(token, error, resync=False):
+        raise RuntimeError("resync failed")
+
+    monkeypatch.setattr(channel_a, "broadcast_error", resync_fails)
+
+    async def main():
+        entry = registry.publish("tok", make_figure(), broadcast=False)
+        await adapter_app._fan_out_payload("tok", entry)
+
+    with caplog.at_level(logging.ERROR, logger="reflex_xy"):
+        asyncio.run(main())
+    assert reached == ["tok"]
+    assert ["resync failed" in str(r.exc_info) for r in caplog.records] == [False, True]
 
 
 def test_a_payload_no_plane_received_still_raises(_fresh_registry, monkeypatch):
@@ -192,7 +233,7 @@ def test_a_rebuild_keeps_a_generation_another_app_received(_fresh_registry, monk
     registry = _fresh_registry
     app_a, app_b = make_app(), make_app()
     channel_a, channel_b = setup(app_a), setup(app_b)
-    reached = _one_plane_fails(monkeypatch, channel_a, channel_b)
+    reached, errors = _one_plane_fails(monkeypatch, channel_a, channel_b)
 
     async def rebuild(token):
         return make_figure()
@@ -206,6 +247,7 @@ def test_a_rebuild_keeps_a_generation_another_app_received(_fresh_registry, monk
 
     assert failure is None
     assert reached == ["evicted"]
+    assert errors == [("a", "evicted", True)]
     assert registry.get("evicted") is entry
 
 

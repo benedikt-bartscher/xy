@@ -177,32 +177,49 @@ def wire_attached() -> None:
     registry.on_error(_fan_out_error)
 
 
-async def _fan_out(
-    calls: "Sequence[Coroutine[Any, Any, None]]", *, partial_ok: bool = False
-) -> None:
+async def _fan_out(calls: "Sequence[Coroutine[Any, Any, None]]") -> None:
     """Await every fan-out, then re-raise the first failure.
 
     One app's transport failing must not swallow the others' deliveries — that
     is the whole point of fanning out — but the error still has to surface the
     way a single-plane send does, so it is raised after the rest have run.
-    With ``partial_ok`` it is only logged once another app was delivered to.
     """
     results = await asyncio.gather(*calls, return_exceptions=True)
-    failures = [result for result in results if isinstance(result, BaseException)]
-    if not failures:
-        return
-    if not partial_ok or len(failures) == len(results):
-        raise failures[0]
-    for failure in failures:
-        _logger.error("reflex_xy: an attached app missed a fan-out", exc_info=failure)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
 
 async def _fan_out_payload(token: str, entry: Any) -> None:
-    # A payload some app received is a delivered generation: raising would make
-    # a rebuild retract it from that app's subscribers.
-    await _fan_out(
-        [plane.broadcast_payload(token, entry) for plane in _live_planes()], partial_ok=True
+    """Fan a payload out, raising only when no attached app received it.
+
+    A payload some app received is a delivered generation, which a rebuild must
+    not retract from its subscribers. An app that missed it asks its own to
+    resync instead: on the old version, their requests are dropped as stale.
+    """
+    planes = _live_planes()
+    results = await asyncio.gather(
+        *(plane.broadcast_payload(token, entry) for plane in planes), return_exceptions=True
     )
+    missed = [
+        (plane, result)
+        for plane, result in zip(planes, results, strict=True)
+        if isinstance(result, BaseException)
+    ]
+    if not missed:
+        return
+    if len(missed) == len(planes):
+        raise missed[0][1]
+    for _, failure in missed:
+        _logger.error(
+            "reflex_xy: an attached app missed figure %s's payload", token, exc_info=failure
+        )
+    try:
+        await _fan_out(
+            [plane.broadcast_error(token, "payload delivery failed", True) for plane, _ in missed]
+        )
+    except Exception:  # noqa: BLE001 - the payload already reached another app
+        _logger.exception("reflex_xy: could not ask figure %s's subscribers to resync", token)
 
 
 async def _fan_out_message(

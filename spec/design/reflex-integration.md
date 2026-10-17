@@ -358,6 +358,8 @@ attempt inserted, so a later subscription retries; a concurrent normal
 replacement is never removed. A fan-out counts as failed only when no attached
 app received the payload: one app failing while another received it is logged
 and the generation kept, since the healthy app's subscribers already hold it.
+The failing app's room gets `err {resync: true}` instead, so its subscribers
+subscribe again rather than send requests dropped as stale.
 
 ### 3.3 Access control
 
