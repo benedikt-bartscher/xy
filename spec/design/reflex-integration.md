@@ -453,13 +453,14 @@ remains, both the sweep and an explicit release retain only the removed token's
 scalar version so a republish on the same worker stays monotonic; the figure
 and its data buffers are released. If an interaction is the first touch after
 eviction, the data plane
-rebuilds, sends every subscribed mount a replacement payload room-wide (in
-every app attached in the process, through the registry seam a normal publish
-fans out on), and
+rebuilds, sends every subscribed mount a replacement payload room-wide, and
 drops the old-generation interaction for the triggering client to retry. If a
 new `sub` is first, the data plane broadcasts the rebuild to existing room
 members before joining the requester, then sends that mount one `mid`-addressed
-payload built for its own `px` hint. The direct path re-reads the current entry
+payload built for its own `px` hint. On either path the rebuild's room
+broadcast goes through the registry seam a normal publish fans out on, so it
+reaches the subscribers of every app attached in the process, not only those
+of the app that rebuilt. The direct path re-reads the current entry
 after joining the room: a normal replacement that landed before the join is
 sent directly, while a replacement after the join reaches the mount through
 the room broadcast. Concurrent same-token misses share the complete rebuild
