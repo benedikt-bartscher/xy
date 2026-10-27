@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 # code. Restore `@main` when channels land there.
 dependencies = [
     "numpy",
-    "pillow",
+    "pillow>=13.0.0",
     "reflex @ git+https://github.com/benedikt-bartscher/reflex.git@7ff416484825edd118ef4182ffcd29583f8e2103",
     "reflex-components-internal @ git+https://github.com/benedikt-bartscher/reflex.git@7ff416484825edd118ef4182ffcd29583f8e2103#subdirectory=packages/reflex-components-internal",
     "reflex-docgen @ git+https://github.com/benedikt-bartscher/reflex.git@7ff416484825edd118ef4182ffcd29583f8e2103#subdirectory=packages/reflex-docgen",
